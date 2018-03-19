@@ -50,31 +50,33 @@ namespace ICSharpCode.CodeConverter.Shared
             }
 
             var conversion = new ProjectConversion<TLanguageConversion>(compilation, new [] {syntaxTree});
-            var converted = conversion.Convert();
-
-            if (!converted.Any()) {
-                var conversionError = conversion._errors.Single();
-                return new ConversionResult(conversionError.Value) { SourcePathOrNull = conversionError.Key };
-            }
-            var resultPair = converted.Single();
-            var resultNode = GetSelectedNode(resultPair.Value);
-            return new ConversionResult(resultNode.ToFullString()) { SourcePathOrNull = resultPair.Key };
+            return ConvertProject(conversion, true).Single();
         }
 
-        public static IEnumerable<ConversionResult> ConvertProjects(IEnumerable<Project> projects)
+        public static IEnumerable<ConversionResult> ConvertProjects(IReadOnlyCollection<Project> projects)
         {
             var solutionDir = Path.GetDirectoryName(projects.First().Solution.FilePath);
             foreach (var project in projects) {
                 var compilation = project.GetCompilationAsync().GetAwaiter().GetResult();
                 var projectConversion = new ProjectConversion<TLanguageConversion>(compilation, solutionDir);
-                foreach (var pathNodePair in projectConversion.Convert()) {
-                    yield return new ConversionResult(pathNodePair.Value.ToFullString()) {SourcePathOrNull = pathNodePair.Key};
-                }
+                foreach (var conversionResult in ConvertProject(projectConversion)) yield return conversionResult;
+            }
+        }
 
-                foreach (var error in projectConversion._errors) {
-                    yield return new ConversionResult(error.Value) { SourcePathOrNull = error.Key };
-                }
-                
+        private static IEnumerable<ConversionResult> ConvertProject(ProjectConversion<TLanguageConversion> projectConversion, bool extractSelection = false)
+        {
+            foreach (var pathNodePair in projectConversion.Convert())
+            {
+                var errors = projectConversion._errors.TryRemove(pathNodePair.Key, out var nonFatalException)
+                    ? new[] {nonFatalException}
+                    : new Exception[0];
+                var resultNode = extractSelection ? GetSelectedNode(pathNodePair.Value) : pathNodePair.Value;
+                yield return new ConversionResult(resultNode.ToFullString(), errors) { SourcePathOrNull = pathNodePair.Key };
+            }
+
+            foreach (var error in projectConversion._errors)
+            {
+                yield return new ConversionResult(error.Value) {SourcePathOrNull = error.Key};
             }
         }
 
@@ -93,6 +95,7 @@ namespace ICSharpCode.CodeConverter.Shared
                 try {
                     secondPassByFilePath.Add(treeFilePath, SingleSecondPass(firstPassResult));
                 }  catch (Exception e) {
+                    secondPassByFilePath.Add(treeFilePath, Formatter.Format(firstPassResult.Value.GetRoot(), AdhocWorkspace));
                     _errors.TryAdd(treeFilePath, e);
                 }
             }
