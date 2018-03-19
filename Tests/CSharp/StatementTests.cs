@@ -1304,5 +1304,16 @@ class TestClass
     }
 }");
         }
+
+
+        [Fact]
+        public void ArrayInitialization()
+        {
+
+
+        char[][] charGroups = new char[][] { "123".ToCharArray(), "456".ToCharArray() };
+        TestConversionVisualBasicToCSharp(@"Dim charGroups As Char()() = New Char()() {""123"".ToCharArray(), ""456"".ToCharArray()}",
+                @"char[][] charGroups = new char[][] {""123"".ToCharArray(), ""456"".ToCharArray()};");
+        }
     }
 }
